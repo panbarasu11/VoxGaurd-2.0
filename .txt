@@ -1,0 +1,2 @@
+.\.venv311\Scripts\activate
+python federated_train.py

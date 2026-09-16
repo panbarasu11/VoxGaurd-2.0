@@ -1,0 +1,35 @@
+# Python virtual environments
+.venv/
+.venv311/
+.venv311_backup/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment / secrets
+.env
+
+# ML / generated files
+*.h5
+*.npz
+
+# Dataset
+data/real/
+data/fake/
+
+# Generated results
+results/*.png
+
+# IDE
+.vscode/
+.idea/
+
+# Build / package
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store

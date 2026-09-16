@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxGuard — Federated AI Voice Deepfake Detection</title>
+    <meta name="description" content="Detect AI-generated synthetic voice deepfakes in real-time using Federated Learning CNN-LSTM model and spectrogram analysis.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-background">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <div class="container">
+        <!-- Top Navigation / Header -->
+        <header class="navbar glass-card">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-microphone-lines"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>VoxGuard <span>FL</span></h1>
+                    <p>Federated AI Voice Deepfake Detection</p>
+                </div>
+            </div>
+
+            <div class="header-status">
+                <div class="badge badge-fl">
+                    <span class="pulse-dot"></span>
+                    <i class="fa-solid fa-network-wired"></i> Model: <strong>FedAvg CNN-LSTM</strong>
+                </div>
+                <div class="badge badge-edge">
+                    <i class="fa-solid fa-shield-halved"></i> <strong>5 Edge Clients</strong> Synchronized
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Left Column: Audio Input & Control Panel -->
+            <div class="left-panel flex-col">
+                <!-- Live Mic & Dropzone Input Card -->
+                <div class="card glass-card upload-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-microphone"></i> Audio Analysis Input</h2>
+                        <span class="subtext">Direct Live Microphone Recording or Audio File Upload</span>
+                    </div>
+
+                    <!-- Input Mode Tabs -->
+                    <div class="input-mode-selector">
+                        <button class="mode-btn active" id="mode-mic-btn" onclick="switchInputMode('mic')">
+                            <i class="fa-solid fa-microphone"></i> Live Mic Recording
+                        </button>
+                        <button class="mode-btn" id="mode-file-btn" onclick="switchInputMode('file')">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload File
+                        </button>
+                    </div>
+
+                    <!-- Mode 1: Live Microphone Recorder -->
+                    <div class="mic-recorder-box" id="mic-recorder-box">
+                        <div class="mic-visualizer-container">
+                            <div class="mic-pulse-ring" id="mic-pulse-ring">
+                                <i class="fa-solid fa-microphone mic-icon-main" id="mic-icon-main"></i>
+                            </div>
+                            <div class="recording-status-text" id="rec-status-text">Click below to start live voice recording</div>
+                            <div class="rec-timer hidden" id="rec-timer">REC 00:00</div>
+                        </div>
+
+                        <div class="mic-controls">
+                            <button class="btn btn-record" id="start-rec-btn">
+                                <i class="fa-solid fa-circle"></i> Start Recording Voice
+                            </button>
+                            <button class="btn btn-stop-rec hidden" id="stop-rec-btn">
+                                <i class="fa-solid fa-square"></i> Stop Recording
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mode 2: Drag and Drop File Upload -->
+                    <div class="dropzone hidden" id="dropzone">
+                        <input type="file" id="audio-input" accept=".wav,.mp3,.flac" hidden>
+                        <div class="dropzone-content" id="dropzone-content">
+                            <div class="upload-icon-wrapper">
+                                <i class="fa-solid fa-file-audio"></i>
+                            </div>
+                            <h3>Drag & Drop Voice File Here</h3>
+                            <p>or <button class="btn-link" id="browse-btn">browse your computer</button></p>
+                            <span class="supported-formats">Supported: WAV, MP3, FLAC (Max 30s / 32MB)</span>
+                        </div>
+                    </div>
+
+                    <!-- Audio Player & Visualizer -->
+                    <div class="player-wrapper hidden" id="player-wrapper">
+                        <div class="audio-info">
+                            <span id="current-filename"><i class="fa-solid fa-music"></i> recorded_voice.wav</span>
+                            <span class="badge badge-small" id="audio-format-badge">WAV</span>
+                        </div>
+                        <audio id="audio-player" controls style="width: 100%; margin-top: 10px;"></audio>
+                        <canvas id="waveform-canvas" height="60"></canvas>
+                    </div>
+
+                    <div class="action-bar">
+                        <button class="btn btn-primary btn-block" id="analyze-btn" disabled>
+                            <i class="fa-solid fa-bolt"></i> Run Federated Deepfake Detection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preset Dataset Selector -->
+                <div class="card glass-card presets-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-folder-open"></i> Preset ASVspoof Dataset Samples</h2>
+                        <span class="subtext">Test instant audio samples with 1-click</span>
+                    </div>
+
+                    <div class="preset-tabs">
+                        <button class="tab-btn active" id="tab-real-btn" onclick="switchPresetTab('real')">
+                            <i class="fa-solid fa-user-check"></i> Genuine Voices (<span id="real-count">0</span>)
+                        </button>
+                        <button class="tab-btn" id="tab-fake-btn" onclick="switchPresetTab('fake')">
+                            <i class="fa-solid fa-robot"></i> AI Spoofed Voices (<span id="fake-count">0</span>)
+                        </button>
+                    </div>
+
+                    <div class="preset-list" id="preset-list">
+                        <!-- Populated by JS -->
+                        <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading preset samples...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Results & Visual Inspection -->
+            <div class="right-panel flex-col">
+                <!-- Result Overview Card -->
+                <div class="card glass-card result-card" id="result-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-microchip"></i> Real-Time Detection Result</h2>
+                        <span class="subtext" id="model-badge-sub">Federated Learning CNN-LSTM Engine</span>
+                    </div>
+
+                    <div class="result-placeholder" id="result-placeholder">
+                        <div class="placeholder-icon">
+                            <i class="fa-solid fa-wave-square"></i>
+                        </div>
+                        <h3>Awaiting Audio Input</h3>
+                        <p>Record your voice live or select an audio file to run federated voice verification.</p>
+                    </div>
+
+                    <div class="result-body hidden" id="result-body">
+                        <div class="verdict-banner" id="verdict-banner">
+                            <div class="verdict-icon" id="verdict-icon">
+                                <i class="fa-solid fa-shield"></i>
+                            </div>
+                            <div class="verdict-text">
+                                <h3 id="verdict-title">ANALYZING...</h3>
+                                <p id="verdict-desc">Evaluating acoustic signatures</p>
+                            </div>
+                        </div>
+
+                        <!-- Gauge Meter & Metrics -->
+                        <div class="gauge-container">
+                            <div class="gauge-meter">
+                                <svg viewBox="0 0 100 50" class="gauge-svg">
+                                    <path class="gauge-bg" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="10"/>
+                                    <path class="gauge-fill" id="gauge-fill-path" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#gauge-gradient)" stroke-width="10" stroke-dasharray="126" stroke-dashoffset="126"/>
+                                    <defs>
+                                        <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                            <stop offset="0%" stop-color="#10b981" />
+                                            <stop offset="50%" stop-color="#f59e0b" />
+                                            <stop offset="100%" stop-color="#ef4444" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <div class="gauge-value" id="gauge-score">0.0%</div>
+                                <div class="gauge-label">AI Fake Probability</div>
+                            </div>
+
+                            <div class="probability-bars">
+                                <div class="prob-row">
+                                    <span class="label"><i class="fa-solid fa-user"></i> Genuine Human:</span>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill fill-real" id="prob-real-bar" style="width: 0%;"></div>
+                                    </div>
+                                    <span class="val" id="prob-real-val">0%</span>
+                                </div>
+
+                                <div class="prob-row">
+                                    <span class="label"><i class="fa-solid fa-robot"></i> AI Deepfake:</span>
+                                    <div class="progress-bar">
+                                        <div class="progress-fill fill-fake" id="prob-fake-bar" style="width: 0%;"></div>
+                                    </div>
+                                    <span class="val" id="prob-fake-val">0%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Spectrogram Display -->
+                        <div class="spectrogram-section">
+                            <div class="section-header">
+                                <h4><i class="fa-solid fa-chart-area"></i> MFCC Audio Spectrogram</h4>
+                                <span class="badge badge-small">40 Mel Coefficients</span>
+                            </div>
+                            <div class="spectrogram-frame">
+                                <img id="spectrogram-img" src="" alt="Spectrogram Heatmap">
+                            </div>
+                        </div>
+
+                        <!-- Acoustic Feature Metrics Grid -->
+                        <div class="metrics-grid">
+                            <div class="metric-box">
+                                <span class="metric-title">Duration</span>
+                                <span class="metric-value" id="metric-duration">-</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-title">MFCC Frames</span>
+                                <span class="metric-value" id="metric-frames">-</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-title">RMS Energy</span>
+                                <span class="metric-value" id="metric-energy">-</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-title">Spectral Centroid</span>
+                                <span class="metric-value" id="metric-centroid">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Federated Learning Edge Topology Section -->
+                <div class="card glass-card fl-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-network-wired"></i> Federated Learning Edge Clients & FedAvg Status</h2>
+                        <button class="btn btn-secondary btn-sm" onclick="simulateFLRound()">
+                            <i class="fa-solid fa-arrows-rotate"></i> Simulate FedAvg Round
+                        </button>
+                    </div>
+
+                    <div class="fl-stats-bar">
+                        <div class="fl-stat-item">
+                            <span class="lbl">Federated Algorithm</span>
+                            <span class="val" id="fl-algo">FedAvg</span>
+                        </div>
+                        <div class="fl-stat-item">
+                            <span class="lbl">Total Clients</span>
+                            <span class="val">5 Edge Nodes</span>
+                        </div>
+                        <div class="fl-stat-item">
+                            <span class="lbl">Data Distribution</span>
+                            <span class="val">IID Partition</span>
+                        </div>
+                        <div class="fl-stat-item">
+                            <span class="lbl">Privacy Protection</span>
+                            <span class="val text-success">100% Zero Raw Data Share</span>
+                        </div>
+                    </div>
+
+                    <div class="client-nodes-grid" id="client-nodes-grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>VoxGuard FL — Audio Deepfake Voice Detection using CNN-LSTM & Federated Learning (IEEE CONIT 2026)</p>
+            <p class="credits">Built with Python, TensorFlow, Flask, Librosa & Web Audio API</p>
+        </footer>
+    </div>
+
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
