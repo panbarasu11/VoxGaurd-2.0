@@ -33,12 +33,25 @@ def load_norm_stats(path=NORM_STATS_PATH):
 
 
 def normalize_features(X, mean_coeff=None, std_coeff=None):
-    """Normalize MFCC features using per-coefficient mean and std."""
+    """Normalize MFCC features using per-coefficient mean and std across 2D/3D tensors."""
     if mean_coeff is None or std_coeff is None:
-        mean_coeff = np.mean(X, axis=(0, 1), keepdims=True)
-        std_coeff = np.std(X, axis=(0, 1), keepdims=True) + 1e-8
-        
+        if len(X.shape) == 3:
+            mean_coeff = np.mean(X, axis=(0, 1), keepdims=True)
+            std_coeff = np.std(X, axis=(0, 1), keepdims=True) + 1e-8
+        else:
+            mean_coeff = np.mean(X, axis=0, keepdims=True)
+            std_coeff = np.std(X, axis=0, keepdims=True) + 1e-8
+
+    # Reshape stats for broadcasting based on input array dimensions
+    if len(X.shape) == 2 and len(mean_coeff.shape) == 3:
+        mean_coeff = mean_coeff[0]
+        std_coeff = std_coeff[0]
+    elif len(X.shape) == 3 and len(mean_coeff.shape) == 2:
+        mean_coeff = np.expand_dims(mean_coeff, axis=0)
+        std_coeff = np.expand_dims(std_coeff, axis=0)
+
     return (X - mean_coeff) / std_coeff
+
 
 
 def balance_dataset(X, y, seed=42):

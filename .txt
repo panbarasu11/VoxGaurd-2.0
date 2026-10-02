@@ -1,2 +1,7 @@
 .\.venv311\Scripts\activate
+python generate_sample_data.py
+python extract_features.py
 python federated_train.py
+python evaluate.py
+python app.py
+http://127.0.0.1:5000

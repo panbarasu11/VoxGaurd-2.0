@@ -9,38 +9,85 @@ Run after training:
 """
 
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    roc_auc_score
-)
-from sklearn.utils import shuffle
 import tensorflow as tf
 
 import config
 
+if sys.platform == "win32" and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
+def shuffle(X, y, seed=42, random_state=42):
+    s = seed if seed is not None else random_state
+    np.random.seed(s)
+    p = np.random.permutation(len(X))
+    return X[p], y[p]
+
+def train_test_split(X, y, test_size=0.2, random_state=42, stratify=None):
+    np.random.seed(random_state)
+    n = len(X)
+    p = np.random.permutation(n)
+    split_idx = max(1, int(n * (1 - test_size)))
+    X_shuffled, y_shuffled = X[p], y[p]
+    return X_shuffled[:split_idx], X_shuffled[split_idx:], y_shuffled[:split_idx], y_shuffled[split_idx:]
+
+def confusion_matrix(y_true, y_pred):
+    cm = np.zeros((2, 2), dtype=int)
+    for t, p in zip(y_true, y_pred):
+        cm[int(t)][int(p)] += 1
+    return cm
+
+def roc_auc_score(y_true, y_prob):
+    thresholds = np.linspace(0, 1, 100)
+    tprs, fprs = [], []
+    for th in thresholds:
+        yp = (y_prob >= th).astype(int)
+        tp = np.sum((y_true == 1) & (yp == 1))
+        fp = np.sum((y_true == 0) & (yp == 1))
+        fn = np.sum((y_true == 1) & (yp == 0))
+        tn = np.sum((y_true == 0) & (yp == 0))
+        tprs.append(tp / (tp + fn + 1e-8))
+        fprs.append(fp / (fp + tn + 1e-8))
+    trapz_func = getattr(np, 'trapezoid', getattr(np, 'trapz', None))
+    return float(np.abs(trapz_func(tprs, fprs)))
+
+def classification_report(y_true, y_pred, target_names=["Real", "Fake"]):
+    cm = confusion_matrix(y_true, y_pred)
+    res = "              precision    recall  f1-score   support\n\n"
+    for i, name in enumerate(target_names):
+        tp = cm[i][i]
+        fp = cm[1-i][i]
+        fn = cm[1-i][i]
+        prec = tp / (tp + fp + 1e-8)
+        rec = tp / (tp + fn + 1e-8)
+        f1 = 2 * prec * rec / (prec + rec + 1e-8)
+        sup = np.sum(y_true == i)
+        res += f"{name:>12}       {prec:.2f}      {rec:.2f}      {f1:.2f}        {sup}\n"
+    return res
 
 def plot_confusion_matrix(cm):
-    """Save a nicely styled confusion matrix."""
+    """Save a nicely styled confusion matrix using matplotlib."""
     os.makedirs("results", exist_ok=True)
-
     plt.figure(figsize=(6, 5))
-    sns.heatmap(
-        cm,
-        annot=True,
-        fmt="d",
-        cmap="Blues",
-        xticklabels=["Real", "Fake"],
-        yticklabels=["Real", "Fake"],
-        linewidths=0.5
-    )
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title("VoxGuard — Confusion Matrix")
+    plt.colorbar()
+    tick_marks = [0, 1]
+    plt.xticks(tick_marks, ["Real", "Fake"])
+    plt.yticks(tick_marks, ["Real", "Fake"])
+    
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            plt.text(j, i, format(cm[i, j], 'd'),
+                     horizontalalignment="center",
+                     color="white" if cm[i, j] > thresh else "black")
+    
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
     plt.tight_layout()
     plt.savefig(config.CM_PATH, dpi=150)
     plt.close()

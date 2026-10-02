@@ -11,16 +11,25 @@ import json
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
+
+if sys.platform == "win32" and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+def shuffle(X, y, seed=42, random_state=42):
+    s = seed if seed is not None else random_state
+    np.random.seed(s)
+    p = np.random.permutation(len(X))
+    return X[p], y[p]
+
+def train_test_split(X, y, test_size=0.2, random_state=42, stratify=None):
+    np.random.seed(random_state)
+    n = len(X)
+    p = np.random.permutation(n)
+    split_idx = max(1, int(n * (1 - test_size)))
+    X_shuffled, y_shuffled = X[p], y[p]
+    return X_shuffled[:split_idx], X_shuffled[split_idx:], y_shuffled[:split_idx], y_shuffled[split_idx:]
+
 import tensorflow as tf
-
-if hasattr(sys.stdout, 'reconfigure'):
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-
 import config
 import federated_config
 from model import build_model

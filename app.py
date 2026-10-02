@@ -55,23 +55,16 @@ def load_fl_model():
 load_fl_model()
 
 def generate_spectrogram_base64(mfcc, title="MFCC Spectrogram"):
-    """Generate base64 encoded PNG heatmap of MFCC features."""
+    """Generate base64 encoded PNG heatmap of MFCC features (Numba-free)."""
     plt.figure(figsize=(8, 3.5))
     plt.style.use('dark_background')
 
     mfcc_disp = mfcc[:, :20] if (len(mfcc.shape) > 1 and mfcc.shape[1] >= 20) else mfcc
 
-    librosa.display.specshow(
-        mfcc_disp.T, 
-        x_axis='time', 
-        y_axis='mel', 
-        sr=config.SAMPLE_RATE, 
-        hop_length=config.HOP_LENGTH,
-        cmap='magma'
-    )
+    plt.imshow(mfcc_disp.T, aspect='auto', origin='lower', cmap='magma')
     plt.colorbar(format='%+2.0f dB')
     plt.title(title, fontsize=12, color='#e0e6ed', pad=10)
-    plt.xlabel('Time (s)', color='#a0aec0')
+    plt.xlabel('Time Frames', color='#a0aec0')
     plt.ylabel('MFCC Coefficients', color='#a0aec0')
     plt.tight_layout()
 
@@ -81,17 +74,31 @@ def generate_spectrogram_base64(mfcc, title="MFCC Spectrogram"):
     buf.seek(0)
     return base64.b64encode(buf.getvalue()).decode('utf-8')
 
+
 def analyze_audio_features(mfcc, audio_path=None):
-    """Compute extra acoustic metrics for explainable AI."""
+    """Compute extra acoustic metrics for explainable AI (Numba-free)."""
     stats = {}
     if audio_path and os.path.exists(audio_path):
         try:
-            audio, sr = librosa.load(audio_path, sr=config.SAMPLE_RATE, duration=config.DURATION)
+            import soundfile as sf
+            audio, sr = sf.read(audio_path)
+            if len(audio.shape) > 1:
+                audio = np.mean(audio, axis=1)
+
             stats['duration'] = round(float(len(audio) / sr), 2)
             stats['sample_rate'] = sr
-            stats['rms_energy'] = round(float(np.mean(librosa.feature.rms(y=audio))), 4)
-            stats['zero_crossing_rate'] = round(float(np.mean(librosa.feature.zero_crossing_rate(y=audio))), 4)
-            stats['spectral_centroid'] = round(float(np.mean(librosa.feature.spectral_centroid(y=audio, sr=sr))), 2)
+            stats['rms_energy'] = round(float(np.sqrt(np.mean(audio**2))), 4)
+
+            # Zero Crossing Rate calculation
+            zcr = np.mean(np.abs(np.diff(audio > 0)))
+            stats['zero_crossing_rate'] = round(float(zcr), 4)
+
+            # Spectral Centroid calculation via NumPy FFT
+            n_samples = min(len(audio), sr * 2)
+            fft_mag = np.abs(np.fft.rfft(audio[:n_samples]))
+            freqs = np.fft.rfftfreq(n_samples, 1 / sr)
+            centroid = np.sum(freqs * fft_mag) / (np.sum(fft_mag) + 1e-8)
+            stats['spectral_centroid'] = round(float(centroid), 2)
         except Exception as e:
             print(f"Error extracting audio metrics: {e}")
 
@@ -100,6 +107,7 @@ def analyze_audio_features(mfcc, audio_path=None):
     stats['mfcc_variance'] = round(float(np.var(mfcc)), 4)
     stats['mfcc_mean'] = round(float(np.mean(mfcc)), 4)
     return stats
+
 
 
 def process_and_predict(file_path):
@@ -125,11 +133,12 @@ def process_and_predict(file_path):
 
     # Per-coefficient Z-score audio feature normalization
     if mean_coeff is not None and std_coeff is not None:
-        mfcc_norm = normalize_features(mfcc, mean_coeff[0], std_coeff[0])
+        mfcc_norm = normalize_features(mfcc, mean_coeff, std_coeff)
     else:
         m = np.mean(mfcc, axis=0, keepdims=True)
         s = np.std(mfcc, axis=0, keepdims=True) + 1e-8
         mfcc_norm = (mfcc - m) / s
+
 
     X = np.expand_dims(mfcc_norm, axis=0)
     prob = float(fl_model.predict(X, verbose=0)[0][0])  # Probability of FAKE (0 to 1)
@@ -217,16 +226,46 @@ def predict_upload():
         return jsonify({"error": "No audio file provided in request."}), 400
 
     file = request.files['audio']
-    if file.filename == '':
-        return jsonify({"error": "Empty filename."}), 400
+
+    # Determine a safe filename with extension
+    original_name = file.filename or 'uploaded_audio'
+    content_type = file.content_type or ''
+
+    # Map content type to file extension
+    ext_map = {
+        'audio/wav': '.wav',
+        'audio/x-wav': '.wav',
+        'audio/wave': '.wav',
+        'audio/mp3': '.mp3',
+        'audio/mpeg': '.mp3',
+        'audio/flac': '.flac',
+        'audio/x-flac': '.flac',
+        'audio/ogg': '.ogg',
+        'audio/webm': '.wav',      # Browser MediaRecorder WebM -> saved as wav
+        'audio/ogg; codecs=opus': '.wav',
+    }
+
+    # Get extension from content type or original filename
+    ext = ext_map.get(content_type.split(';')[0].strip(), '')
+    if not ext:
+        _, ext = os.path.splitext(original_name)
+        if not ext:
+            ext = '.wav'  # default fallback
 
     temp_dir = os.path.join(os.getcwd(), 'temp_uploads')
     os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, file.filename)
+    temp_path = os.path.join(temp_dir, f'upload_audio{ext}')
+
     file.save(temp_path)
+    print(f"[Upload] Saved audio: {temp_path} | Content-Type: {content_type} | Size: {os.path.getsize(temp_path)} bytes")
 
     try:
         result = process_and_predict(temp_path)
+        if not result.get('success') and result.get('error'):
+            print(f"[Upload] Prediction error: {result.get('error')}")
+    except Exception as e:
+        print(f"[Upload] Exception: {e}")
+        result = {"error": f"Processing failed: {str(e)}"}
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
